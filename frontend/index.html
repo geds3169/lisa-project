@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>L.I.S.A. — Spatial HUD v2.1</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Syne:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="spatial-background"></div>
+
+    <!-- ── 1. ORBE ─────────────────────────────────────────── -->
+    <div id="lisa-orb-hud" class="hud-element">
+        <canvas id="orbCanvas" width="300" height="300"></canvas>
+        <div id="orb-click-zone">
+            <div id="orb-core"></div>
+            <div id="orb-status">IDLE</div>
+        </div>
+    </div>
+
+    <!-- ── 2. CHAT MAÎTRE ───────────────────────────────────── -->
+    <div id="lisa-chat-master" class="spatial-window hud-element anchor-right">
+        <canvas class="window-liquid-bg"></canvas>
+
+        <div class="window-header">
+            <div class="header-left">
+                <button class="ctrl-btn master-btn" id="master-panel-trigger" title="Panneau de contrôle L.I.S.A.">⚙ CONTROL</button>
+                <span class="window-title">L.I.S.A.</span>
+            </div>
+            <div class="header-left" style="gap:8px">
+                <button class="mute-btn" id="mute-btn" onclick="toggleMute()" title="Son actif / muet">🔊</button>
+                <span class="window-close-btn" onclick="triggerSessionReset()" title="Réinitialiser la session">✕</span>
+            </div>
+        </div>
+
+        <!-- Statut cinématique -->
+        <div class="chat-status-bar">
+            <div class="status-dot" id="status-dot"></div>
+            <span class="status-badge" id="status-badge">IDLE</span>
+            <span class="status-text" id="chat-status-text">Connecté</span>
+        </div>
+
+        <!-- Historique des échanges -->
+        <div class="window-body chat-history-zone" id="chat-messages">
+            <div class="msg lisa">Interface Spatiale v2.1 initialisée. Prête pour l'instanciation des briques de widgets.</div>
+        </div>
+
+        <!-- Saisie utilisateur -->
+        <div class="chat-input-wrapper">
+            <div class="input-container">
+                <textarea id="chat-input" placeholder="Saisir une intention..." rows="1"></textarea>
+                <button id="clear-input-btn" class="input-action-btn" title="Vider la saisie">🗑️</button>
+            </div>
+            <button id="send-btn" class="send-action-btn">→</button>
+        </div>
+
+        <!-- Poignées de redimensionnement -->
+        <div class="resize-handle left-handle"></div>
+        <div class="resize-handle top-handle"></div>
+        <div class="resize-handle tl"></div>
+        <div class="resize-handle tr"></div>
+        <div class="resize-handle bl"></div>
+        <div class="resize-handle br"></div>
+    </div>
+
+    <!-- ── 3. PANNEAU DE CONTRÔLE UNIFIÉ ────────────────────── -->
+    <div id="lisa-master-panel" class="spatial-window hud-element modal-hidden">
+        <canvas class="window-liquid-bg"></canvas>
+        <div class="window-header" style="cursor:move">
+            <span class="window-title">PRÉFÉRENCES</span>
+            <span class="window-close-btn" onclick="toggleMasterPanel()">✕</span>
+        </div>
+        <div class="window-body master-panel-body">
+
+            <!-- ── Widgets actifs ── -->
+            <div class="mp-section">
+                <div class="mp-label">MES WIDGETS ACTIFS</div>
+                <div id="mp-widget-list" class="mp-widget-list">
+                    <!-- Généré dynamiquement par refreshMasterPanel() -->
+                </div>
+            </div>
+
+            <!-- ── Ajouter un widget ── -->
+            <div class="mp-section">
+                <div class="mp-label">AJOUTER UN WIDGET</div>
+                <div class="mp-add-grid">
+                    <button class="mp-add-btn" onclick="launchWidget('meteo')">🌤 Météo</button>
+                    <button class="mp-add-btn" onclick="launchWidget('youtube')">▶ YouTube</button>
+                    <button class="mp-add-btn" onclick="launchWidget('domotique')">🏠 Domotique</button>
+                    <button class="mp-add-btn" onclick="launchWidget('systeme')">🖥 Système</button>
+                </div>
+            </div>
+
+            <!-- ── Apparence globale ── -->
+            <div class="mp-section">
+                <div class="mp-label">APPARENCE GLOBALE</div>
+                <div class="mp-row">
+                    <label>Arrondi des coins</label>
+                    <input type="range" id="cfg-radius" min="0" max="30" value="16" oninput="updateSystemStyles()">
+                </div>
+                <div class="mp-row">
+                    <label>Transparence du verre</label>
+                    <input type="range" id="cfg-glass-op" min="1" max="40" value="6" oninput="updateSystemStyles()">
+                </div>
+                <div class="mp-row">
+                    <label>Opacité du contenu</label>
+                    <input type="range" id="cfg-content-op" min="20" max="100" value="100" oninput="updateSystemStyles()">
+                </div>
+                <div class="mp-row">
+                    <label>Flou d'arrière-plan</label>
+                    <input type="range" id="cfg-blur" min="4" max="50" value="18" oninput="updateSystemStyles()">
+                </div>
+                <div class="mp-row">
+                    <label>Préférences système (OS)</label>
+                    <button class="master-btn" onclick="applyOsTheme()">Appliquer le thème OS</button>
+                </div>
+            </div>
+
+            <!-- ── Liseré & LED ── -->
+            <div class="mp-section">
+                <div class="mp-label">LISERÉ & EFFETS LED</div>
+                <div class="mp-row" style="flex-direction:row;align-items:center;gap:10px">
+                    <label style="flex:1">Couleur</label>
+                    <input type="color" id="cfg-border-color" value="#4a7fc1" oninput="updateBorderColor(this.value)">
+                </div>
+                <div class="mp-row">
+                    <label>Intensité</label>
+                    <input type="range" id="cfg-border-int" min="0" max="100" value="55" oninput="updateSystemStyles()">
+                </div>
+                <div class="mp-row">
+                    <label>Vitesse de l'effet</label>
+                    <input type="range" id="cfg-led-speed" min="3" max="40" value="20" oninput="updateSystemStyles()">
+                </div>
+                <div class="mp-row">
+                    <label>Effet</label>
+                    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
+                        <button class="master-btn led-select-btn" data-effect="static" onclick="applyLedEffect('static')">Statique</button>
+                        <button class="master-btn led-select-btn" data-effect="pulse" onclick="applyLedEffect('pulse')">💓 Pulse</button>
+                        <button class="master-btn led-select-btn" data-effect="wave" onclick="applyLedEffect('wave')">〰 Vague</button>
+                        <button class="master-btn led-select-btn" data-effect="snake" onclick="applyLedEffect('snake')">🐍 Serpent</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Sauvegarde ── -->
+            <div class="mp-section">
+                <div class="mp-label">ENREGISTREMENT</div>
+                <button class="mp-save-btn" onclick="saveAllAndPersist()">💾 Tout enregistrer (positions + config)</button>
+                <div style="display:flex;gap:6px;margin-top:6px">
+                    <button class="master-btn" style="flex:1" onclick="saveSettingsToJSON()">📤 Exporter JSON</button>
+                    <label class="master-btn" style="flex:1;text-align:center;cursor:pointer">
+                        📂 Importer JSON
+                        <input type="file" accept=".json" id="json-import-input" style="display:none" onchange="loadSettingsFromJSON(this)">
+                    </label>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── 4. BARRE DE SIMULATION (DEBUG) ───────────────────── -->
+    <div id="simulation-bar">
+        <button onclick="simulateIncomingCall()">📞 Simuler appel entrant</button>
+        <button onclick="cycleOrbState()">🔄 Cycler état orbe</button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

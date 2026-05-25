@@ -51,3 +51,4 @@ desktop.ini
 # ── Certificats de signature (JAMAIS sur GitHub) ─────────────────
 *.crt
 *.cer
+frontend/nice/

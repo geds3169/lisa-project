@@ -1,0 +1,1131 @@
+:root {
+    /* =========================================================================
+       PROPRIÉTÉS LOGIQUES DE L'IDENTITÉ VISUELLE SPATIALE (NUANCES DU RENDER)
+       ========================================================================= */
+    --orb-idle:       #4a7fc1;
+    --orb-listen:     #00d4ff;
+    --orb-think:      #bd00ff;
+    --orb-external:   #6366f1;
+    --orb-respond:    #34d399;
+    --orb-error:      #f59e0b;
+    --orb-offline:    #f59e0b;
+    /* Alias rétrocompatibles */
+    --orb-cyan:   var(--orb-listen);
+    --orb-violet: var(--orb-think);
+    --orb-blue:   var(--orb-idle);
+
+    /* Variables dynamiques réassignées en temps réel par le contrôleur JS selon l'état système */
+    --state-color: var(--orb-idle);
+    --state-glow: rgba(74, 127, 193, 0.4);
+
+    /* --- PARAMÈTRES ET STRUCTURE DE LA COUCHE DE VERRE (AERO GLASS SPECIFICATION) --- */
+    --glass-tint: 255, 255, 255;   /* Base blanche — le blur fait le travail, pas l'opacité */
+    --glass-liseret: 80, 120, 200;
+    --glass-blur: 18px;
+
+    /* Variables d'échelle dynamiques */
+    --sys-radius: 16px;
+    --sys-bg-opacity: 0.06;        /* Très transparent — Vista style */
+    --sys-content-opacity: 1.0;
+
+    /* Liseré LED — contrôlables par l'utilisateur */
+    --border-r: 80; --border-g: 120; --border-b: 200;
+    --border-intensity: 0.55;      /* 0 → 1 */
+    --border-effect: static;       /* static | pulse | wave | snake */
+    --led-speed: 2s;               /* Vitesse des effets LED — contrôlée par slider */
+
+    /* Animation du serpent — @property requis pour animer un conic-gradient */
+    --border-angle: 0deg;
+}
+
+/* Houdini @property pour l'effet serpent (Chrome/Tauri uniquement) */
+@property --border-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    font-family: 'Syne', sans-serif;
+    color: #c8d8f0;
+    overflow: hidden; /* Empêche l'apparition des barres de défilement système natives du navigateur */
+    user-select: none; /* Désactive la sélection de texte native pour imiter le comportement d'une vraie app OS */
+    background: #020408;
+}
+
+/* Fond d'écran réel de l'utilisateur — permet d'évaluer le rendu Aero Glass dans les vraies conditions */
+#spatial-background {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    background-image: url('./Zorin.jpg');
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+}
+
+/* Strate universelle applicable aux instances de fenêtres et d'orbe flottantes (Z-Index isolé) */
+.hud-element {
+    position: absolute;
+    z-index: 100;
+    /* Transition lissée type cinématique matérielle (Cubic Bezier pour l'effet d'aspiration fluide) */
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+
+/* =========================================================================
+   GÉOMÉTRIE AVANCÉE ET CLICS TRAVERSANTS DE L'ORBE CORE
+   ========================================================================= */
+#lisa-orb-hud {
+    top: 20px;
+    right: 20px;
+    width: 300px;
+    height: 300px;
+}
+
+/* Canvas particules — toute la surface, pointer-events bloqués */
+#orbCanvas {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    z-index: 101;
+}
+
+/* Zone de clic circulaire — strictement au centre géométrique du canvas */
+#orb-click-zone {
+    position: absolute;
+    top: 75px; left: 75px;
+    width: 150px; height: 150px;
+    border-radius: 50%;
+    pointer-events: auto;
+    cursor: grab;
+    z-index: 102;
+}
+#orb-click-zone:active { cursor: grabbing; }
+
+/* Noyau centré via position absolue — découplé du flux pour ne pas décaler le barycentre visuel */
+#orb-core {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 72px; height: 72px;
+    background: radial-gradient(circle, #fff 0%, var(--state-color) 65%);
+    border-radius: 50%;
+    box-shadow: 0 0 35px var(--state-glow), 0 0 60px var(--state-glow);
+    transition: background 0.5s, box-shadow 0.5s;
+    animation: orb-core-pulse 3s ease-in-out infinite;
+}
+
+@keyframes orb-core-pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
+    50%       { transform: translate(-50%, -50%) scale(1.07); opacity: 0.88; }
+}
+
+/* Statut orbe — positionné sous le noyau, en dehors du flux absolu */
+#orb-status {
+    position: absolute;
+    bottom: 6px; left: 50%;
+    transform: translateX(-50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    color: var(--state-color);
+    text-transform: uppercase;
+    text-shadow: 0 0 8px var(--state-glow);
+    white-space: nowrap;
+    transition: color 0.5s, text-shadow 0.5s;
+}
+
+/* =========================================================================
+   BARRE DE STATUT CINÉMATIQUE — EN-TÊTE DU CHAT MAÎTRE
+   ========================================================================= */
+.chat-status-bar {
+    padding: 7px 16px;
+    border-bottom: 1px solid rgba(var(--glass-liseret), 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.status-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    color: rgba(200, 216, 240, 0.75); /* Couleur neutre — le dot coloré porte l'info d'état */
+    text-transform: uppercase;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.9); /* Lisible sur tout fond */
+    transition: opacity 0.15s ease;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Indicateur de point vivant synchronisé avec l'état */
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--state-color);
+    box-shadow: 0 0 6px var(--state-glow);
+    transition: background 0.5s, box-shadow 0.5s;
+    flex-shrink: 0;
+    animation: status-dot-blink 2s ease-in-out infinite;
+}
+
+@keyframes status-dot-blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.35; }
+}
+
+/* Bouton Muet — accessible en permanence depuis l'en-tête du Chat */
+.mute-btn {
+    background: transparent;
+    border: 1px solid rgba(var(--glass-liseret), 0.2);
+    color: rgba(200, 216, 240, 0.5);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.1em;
+    flex-shrink: 0;
+}
+.mute-btn:hover { border-color: rgba(var(--glass-liseret), 0.5); color: #fff; }
+.mute-btn.muted {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+}
+
+/* =========================================================================
+   FENÊTRE UNIVERSELLE — AERO GLASS VISTA (VRAI VERRE DÉPOLI)
+   ========================================================================= */
+.spatial-window {
+    position: absolute;
+    /* Très basse opacité de fond — le blur fait tout le travail comme Vista */
+    background: rgba(var(--glass-tint), var(--sys-bg-opacity));
+    border: 1px solid rgba(255,255,255,0.18);
+    backdrop-filter: blur(var(--glass-blur)) saturate(200%) brightness(1.08);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(200%) brightness(1.08);
+    border-radius: var(--sys-radius);
+    box-shadow:
+        0 24px 60px rgba(0,0,0,0.45),
+        0 0 0 1px rgba(255,255,255,0.06) inset;
+    overflow: visible; /* Pin button dépasse le bord — overflow sur window-body uniquement */
+    display: flex;
+    flex-direction: column;
+}
+
+/* Liseré lumineux — pseudo ::before géré selon l'effet actif */
+.spatial-window::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+        135deg,
+        rgba(var(--border-r), var(--border-g), var(--border-b), calc(var(--border-intensity) * 0.9)) 0%,
+        rgba(var(--border-r), var(--border-g), var(--border-b), calc(var(--border-intensity) * 0.15)) 45%,
+        rgba(var(--border-r), var(--border-g), var(--border-b), calc(var(--border-intensity) * 0.55)) 100%
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 900;
+    animation: liseret-shimmer 6s ease-in-out infinite;
+}
+
+@keyframes liseret-shimmer {
+    0%, 100% { opacity: 0.75; }
+    50%       { opacity: 1.0; }
+}
+
+/* Reflet spéculaire supérieur — signature de l'effet Aero Glass Vista */
+.spatial-window::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 48%;
+    background: linear-gradient(
+        180deg,
+        rgba(255,255,255,0.14) 0%,
+        rgba(255,255,255,0.06) 35%,
+        transparent 100%
+    );
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* ── LED EFFECT CLASSES ────────────────────────────────────────────── */
+
+/* PULSE : halo qui respire */
+.led-pulse {
+    animation: led-pulse-shadow var(--led-speed) ease-in-out infinite;
+}
+@keyframes led-pulse-shadow {
+    0%, 100% {
+        box-shadow: 0 24px 60px rgba(0,0,0,0.45),
+                    0 0 0 1px rgba(255,255,255,0.06) inset,
+                    0 0 calc(var(--border-intensity) * 8px)
+                    rgba(var(--border-r),var(--border-g),var(--border-b), calc(var(--border-intensity) * 0.6));
+    }
+    50% {
+        box-shadow: 0 24px 60px rgba(0,0,0,0.45),
+                    0 0 0 1px rgba(255,255,255,0.06) inset,
+                    0 0 calc(var(--border-intensity) * 28px)
+                    rgba(var(--border-r),var(--border-g),var(--border-b), calc(var(--border-intensity) * 0.9)),
+                    0 0 calc(var(--border-intensity) * 50px)
+                    rgba(var(--border-r),var(--border-g),var(--border-b), calc(var(--border-intensity) * 0.35));
+    }
+}
+
+/* WAVE : spot de lumière qui traverse le liseré horizontalement */
+.led-wave::before {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(var(--border-r),var(--border-g),var(--border-b), calc(var(--border-intensity) * 0.2)) 20%,
+        rgba(var(--border-r),var(--border-g),var(--border-b), var(--border-intensity)) 50%,
+        rgba(var(--border-r),var(--border-g),var(--border-b), calc(var(--border-intensity) * 0.2)) 80%,
+        transparent 100%
+    );
+    background-size: 250% 100%;
+    animation: led-wave-travel var(--led-speed) linear infinite;
+}
+@keyframes led-wave-travel {
+    from { background-position: -100% 0; }
+    to   { background-position:  250% 0; }
+}
+
+/* SNAKE : point de lumière qui fait le tour du liseré */
+.led-snake::before {
+    background: conic-gradient(
+        from var(--border-angle),
+        transparent 0%,
+        transparent 78%,
+        rgba(var(--border-r),var(--border-g),var(--border-b), calc(var(--border-intensity) * 0.3)) 85%,
+        rgba(var(--border-r),var(--border-g),var(--border-b), var(--border-intensity)) 93%,
+        rgba(var(--border-r),var(--border-g),var(--border-b), calc(var(--border-intensity) * 0.4)) 97%,
+        transparent 100%
+    );
+    animation: led-snake-rotate var(--led-speed) linear infinite;
+}
+@keyframes led-snake-rotate {
+    to { --border-angle: 360deg; }
+}
+
+/* Moteur fluide liquide : Positionné en arrière-plan strict du widget, sous les textes */
+.window-liquid-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1; /* Isolation absolue en couche arrière */
+    opacity: 0.2;
+    pointer-events: none;
+}
+
+.window-header {
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: move; /* Indique la capacité de relocalisation spatiale sur grand écran/TV */
+    border-bottom: 1px solid rgba(var(--glass-liseret), 0.1);
+}
+
+.header-left { display: flex; align-items: center; gap: 10px; }
+
+.window-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.window-close-btn {
+    cursor: pointer;
+    font-size: 13px;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+.window-close-btn:hover { opacity: 1; }
+
+.window-body {
+    padding: 16px;
+    opacity: var(--sys-content-opacity);
+    overflow: hidden; /* Clippage du contenu, pas du container */ /* Liaison directe avec le variateur d'opacité du contenu */
+    position: relative;
+}
+
+/* Style dédié au bouton gouverneur du Chat Maître */
+.master-btn {
+    background: rgba(var(--glass-liseret), 0.2);
+    border: 1px solid rgba(var(--glass-liseret), 0.4);
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.master-btn:hover { background: rgba(var(--glass-liseret), 0.4); }
+
+/* ── Console Chat — sous l'orbe, alignée droite, même largeur ── */
+#lisa-chat-master {
+    top: 330px;
+    right: 20px;
+    width: 300px;
+    height: min(420px, calc(100vh - 360px));
+}
+
+/* =========================================================================
+   CONCEPTION DES SCROLLBARS FINES ET ÉTANCHES SANS APPAUVRISSEMENT DU DESIGN
+   ========================================================================= */
+.chat-history-zone {
+    flex: 1;
+    overflow-y: auto; /* Active le défilement vertical autonome */
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 10px;
+}
+
+/* Dissimulation des barres standard et injection de la scrollbar fine LISA */
+.chat-history-zone::-webkit-scrollbar,
+.input-container::-webkit-scrollbar {
+    width: 4px;  /* Calibrage ultra-fin (4px) pour préserver la sensation de légèreté */
+    height: 4px;
+}
+.chat-history-zone::-webkit-scrollbar-thumb,
+.input-container::-webkit-scrollbar-thumb {
+    background: rgba(var(--glass-liseret), 0.3); /* Utilisation de la nuance du liseré pour le curseur de scroll */
+    border-radius: 10px;
+}
+.chat-history-zone::-webkit-scrollbar-track,
+.input-container::-webkit-scrollbar-track {
+    background: transparent; /* Suppression complète du fond de scrollbar par défaut */
+}
+
+.msg {
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.4;
+    max-width: 85%;
+    word-wrap: break-word;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.msg.user {
+    background: rgba(var(--border-r), var(--border-g), var(--border-b), 0.12);
+    border: 1px solid rgba(var(--border-r), var(--border-g), var(--border-b), 0.25);
+    align-self: flex-end;
+}
+.msg.lisa {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    align-self: flex-start;
+    border-left: 2px solid var(--state-color);
+}
+
+/* ══════════════════════════════════════════════════════
+   WIDGET YOUTUBE — 3 ÉCRANS
+   ══════════════════════════════════════════════════════ */
+.yt-widget { display:flex; flex-direction:column; gap:7px; padding:0; min-height:0; }
+
+.yt-search-row { display:flex; gap:6px; align-items:center; }
+.yt-input {
+    flex:1; background:rgba(0,0,0,0.28);
+    border:1px solid rgba(var(--glass-liseret),0.22);
+    border-radius:6px; color:#fff;
+    font-family:'JetBrains Mono',monospace; font-size:11px;
+    padding:7px 10px; outline:none; transition:border-color 0.2s;
+}
+.yt-input:focus { border-color:rgba(var(--glass-liseret),0.55); }
+.yt-input::placeholder { color:rgba(200,216,240,0.28); }
+
+.yt-btn {
+    background:rgba(var(--glass-liseret),0.14);
+    border:1px solid rgba(var(--glass-liseret),0.28);
+    color:#fff; border-radius:6px; cursor:pointer;
+    font-size:12px; padding:7px 11px; white-space:nowrap;
+    transition:background 0.2s; flex-shrink:0;
+}
+.yt-btn:hover { background:rgba(var(--glass-liseret),0.32); }
+.yt-btn.yt-red { background:rgba(180,0,0,0.22); border-color:rgba(220,50,50,0.35); }
+.yt-btn.yt-red:hover { background:rgba(200,0,0,0.42); }
+
+.yt-filters { display:flex; gap:4px; flex-wrap:wrap; }
+.yt-filter {
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(var(--glass-liseret),0.14);
+    color:rgba(200,216,240,0.48);
+    border-radius:20px; cursor:pointer;
+    font-family:'JetBrains Mono',monospace;
+    font-size:9px; letter-spacing:0.06em;
+    padding:3px 9px; transition:all 0.2s;
+}
+.yt-filter:hover { color:#fff; border-color:rgba(var(--glass-liseret),0.38); }
+.yt-filter.active {
+    background:rgba(180,0,0,0.22); border-color:rgba(220,60,60,0.5); color:#ff7070;
+}
+
+/* ── Écrans ── */
+.yt-screen { display:none; flex-direction:column; }
+.yt-screen.active { display:flex; }
+
+/* Écran 1 — Accueil */
+.yt-home {
+    align-items:center; justify-content:center;
+    min-height:160px; padding:16px;
+}
+.yt-home-msg {
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    text-align:center;
+}
+.yt-home-icon { font-size:32px; opacity:0.25; }
+.yt-home-line { font-family:'Syne',sans-serif; font-size:12px; color:rgba(200,216,240,0.55); }
+.yt-home-sub { font-family:'JetBrains Mono',monospace; font-size:9px; color:rgba(200,216,240,0.28); letter-spacing:0.06em; }
+.yt-api-notice {
+    margin-top:6px; font-family:'JetBrains Mono',monospace;
+    font-size:9px; letter-spacing:0.06em;
+    color:rgba(200,216,240,0.28);
+    background:rgba(0,0,0,0.2); border-radius:4px;
+    padding:5px 10px; border:1px solid rgba(var(--glass-liseret),0.1);
+}
+
+/* Écran 2 — Résultats */
+.yt-results { min-height:0; }
+.yt-results-scroll {
+    overflow-y:auto; max-height:280px;
+    display:flex; flex-direction:column; gap:5px;
+    scrollbar-width:thin; scrollbar-color:rgba(var(--glass-liseret),0.25) transparent;
+}
+.yt-results-scroll::-webkit-scrollbar { width:3px; }
+.yt-results-scroll::-webkit-scrollbar-thumb { background:rgba(var(--glass-liseret),0.25); border-radius:2px; }
+
+.yt-loading {
+    font-family:'JetBrains Mono',monospace; font-size:10px;
+    color:rgba(200,216,240,0.35); letter-spacing:0.1em;
+    text-align:center; padding:20px;
+}
+
+/* Cartes résultat */
+.yt-card {
+    display:flex; gap:9px; padding:7px 8px;
+    border-radius:8px; cursor:pointer;
+    background:rgba(255,255,255,0.03);
+    border:1px solid rgba(var(--glass-liseret),0.09);
+    transition:all 0.18s; align-items:flex-start;
+}
+.yt-card:hover {
+    background:rgba(255,255,255,0.07);
+    border-color:rgba(var(--glass-liseret),0.28);
+    transform:translateX(2px);
+}
+.yt-card-thumb {
+    width:88px; height:50px;
+    object-fit:cover; border-radius:4px; flex-shrink:0;
+    background:rgba(0,0,0,0.3);
+}
+.yt-card-info {
+    display:flex; flex-direction:column; gap:3px;
+    overflow:hidden; flex:1; min-width:0;
+}
+.yt-card-title {
+    font-family:'Syne',sans-serif; font-size:11px;
+    color:#e8f0ff; line-height:1.35;
+    overflow:hidden; text-overflow:ellipsis;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+.yt-card-channel {
+    font-family:'JetBrains Mono',monospace; font-size:9px;
+    color:rgba(200,216,240,0.4); letter-spacing:0.05em;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.yt-card-tag {
+    font-family:'JetBrains Mono',monospace; font-size:8px;
+    color:rgba(200,216,240,0.28); letter-spacing:0.08em;
+}
+
+/* Écran 3 — Player */
+.yt-player-screen { gap:6px; }
+.yt-back-btn {
+    background:transparent; border:none;
+    color:rgba(200,216,240,0.45);
+    font-family:'JetBrains Mono',monospace; font-size:10px;
+    letter-spacing:0.08em; cursor:pointer; padding:0 2px;
+    transition:color 0.2s; text-align:left;
+}
+.yt-back-btn:hover { color:#fff; }
+.yt-player-wrap { aspect-ratio:16/9; border-radius:8px; overflow:hidden; background:#000; }
+.yt-iframe { width:100%; height:100%; display:block; border:none; border-radius:8px; }
+.yt-now-playing {
+    font-family:'JetBrains Mono',monospace; font-size:9px;
+    color:rgba(200,216,240,0.35); letter-spacing:0.06em;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    padding:0 2px;
+}
+
+/* ══════════════════════════════════════════════════════
+   WIDGET MÉTÉO
+   ══════════════════════════════════════════════════════ */
+.wx-widget { display:flex; flex-direction:column; gap:10px; }
+
+.wx-search-row {
+    display:flex; gap:6px;
+}
+.wx-city-input {
+    flex:1; background:rgba(0,0,0,0.25);
+    border:1px solid rgba(var(--glass-liseret),0.25);
+    border-radius:6px; color:#fff;
+    font-family:'JetBrains Mono',monospace; font-size:11px;
+    padding:7px 10px; outline:none;
+    transition:border-color 0.2s;
+}
+.wx-city-input:focus { border-color:rgba(var(--glass-liseret),0.55); }
+.wx-city-input::placeholder { color:rgba(200,216,240,0.3); }
+
+.wx-search-btn {
+    background:rgba(var(--glass-liseret),0.15);
+    border:1px solid rgba(var(--glass-liseret),0.3);
+    color:#fff; border-radius:6px; cursor:pointer;
+    font-size:13px; padding:7px 12px;
+    transition:background 0.2s;
+}
+.wx-search-btn:hover { background:rgba(var(--glass-liseret),0.35); }
+
+.wx-current {
+    display:flex; flex-direction:column; gap:6px;
+}
+.wx-main-row {
+    display:flex; align-items:center; gap:12px;
+}
+.wx-icon { font-size:36px; line-height:1; }
+.wx-temp-block { display:flex; flex-direction:column; }
+.wx-temp {
+    font-family:'Syne',sans-serif; font-size:28px;
+    font-weight:600; color:#fff; line-height:1;
+}
+.wx-city-name {
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px; letter-spacing:0.15em;
+    color:rgba(200,216,240,0.6); text-transform:uppercase;
+}
+.wx-condition {
+    font-family:'Syne',sans-serif; font-size:13px;
+    color:rgba(200,216,240,0.8);
+}
+.wx-details {
+    display:flex; gap:12px; flex-wrap:wrap;
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px; letter-spacing:0.08em;
+    color:rgba(200,216,240,0.5);
+}
+.wx-detail { display:flex; gap:4px; align-items:center; }
+
+.wx-forecast {
+    display:flex; gap:6px;
+    border-top:1px solid rgba(var(--glass-liseret),0.1);
+    padding-top:8px;
+}
+.wx-day {
+    flex:1; display:flex; flex-direction:column;
+    align-items:center; gap:3px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:9px; letter-spacing:0.08em;
+    color:rgba(200,216,240,0.5);
+}
+.wx-day-icon { font-size:16px; }
+.wx-day-temp { color:#fff; font-size:11px; }
+.wx-day-range { color:rgba(200,216,240,0.35); font-size:9px; }
+
+.wx-source-row {
+    display:flex; align-items:center; gap:6px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:9px; letter-spacing:0.08em;
+    color:rgba(200,216,240,0.3);
+}
+.wx-source-row a { color:rgba(100,150,220,0.6); text-decoration:none; }
+
+.wx-status {
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px; letter-spacing:0.1em;
+    color:rgba(200,216,240,0.35);
+    text-align:center; padding:16px 0;
+}
+/* ── Bouton de verrouillage de position (Pin HUD) ─────────────── */
+.pin-btn {
+    position: absolute;
+    top: -9px; left: -9px;
+    width: 22px; height: 22px;
+    background: rgba(10,15,30,0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(var(--border-r),var(--border-g),var(--border-b),0.3);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1001;
+    transition: all 0.2s ease;
+    color: rgba(200,216,240,0.3);
+    padding: 0;
+}
+.pin-btn:hover {
+    border-color: rgba(var(--border-r),var(--border-g),var(--border-b),0.8);
+    color: rgba(200,216,240,0.9);
+    transform: scale(1.18);
+    box-shadow: 0 0 8px rgba(var(--border-r),var(--border-g),var(--border-b),0.35);
+}
+.pin-btn svg { width: 11px; height: 11px; pointer-events: none; }
+
+/* Verrouillé — réticule actif couleur liseré */
+.pin-btn.is-pinned {
+    color: rgba(var(--border-r),var(--border-g),var(--border-b),0.7);
+    border-color: rgba(var(--border-r),var(--border-g),var(--border-b),0.45);
+    background: rgba(var(--border-r),var(--border-g),var(--border-b),0.1);
+}
+.pin-btn.is-pinned:hover { color: rgba(var(--border-r),var(--border-g),var(--border-b),1); }
+
+/* Libre — réticule vert pulsant, signale qu'on peut déplacer */
+.pin-btn.is-free {
+    color: rgba(52,211,153,0.85);
+    border-color: rgba(52,211,153,0.5);
+    background: rgba(52,211,153,0.1);
+    animation: pin-free-pulse 1.4s ease-in-out infinite;
+}
+@keyframes pin-free-pulse {
+    0%,100% { box-shadow: 0 0 4px rgba(52,211,153,0.25); }
+    50%      { box-shadow: 0 0 14px rgba(52,211,153,0.6); }
+}
+
+/* ── Bouton ⚙ de configuration individuelle par widget ── */
+    background: transparent;
+    border: 1px solid rgba(var(--glass-liseret), 0.25);
+    color: rgba(200, 216, 240, 0.5);
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+.widget-gear-btn:hover {
+    background: rgba(var(--glass-liseret), 0.2);
+    color: #fff;
+    border-color: rgba(var(--glass-liseret), 0.5);
+    transform: rotate(60deg);
+}
+
+/* ── Panneau de config inline d'un widget (masqué par défaut) ── */
+.widget-config-panel {
+    border-top: 1px solid rgba(var(--glass-liseret), 0.12);
+    padding: 12px 14px;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    background: rgba(0,0,0,0.15);
+    backdrop-filter: blur(6px);
+}
+.widget-config-panel.open { display: flex; }
+.wcfg-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: rgba(200,216,240,0.55);
+}
+.wcfg-row label { letter-spacing: 0.1em; }
+.wcfg-row input[type="range"] { accent-color: var(--state-color); width: 100%; }
+.wcfg-row input[type="color"] {
+    width: 30px; height: 20px;
+    border: 1px solid rgba(var(--glass-liseret),0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    background: none;
+    padding: 1px;
+}
+.wcfg-save-btn {
+    background: rgba(var(--glass-liseret), 0.15);
+    border: 1px solid rgba(var(--glass-liseret), 0.3);
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+    width: 100%;
+    margin-top: 4px;
+}
+.wcfg-save-btn:hover { background: rgba(var(--glass-liseret), 0.35); }
+
+/* Zone d'enveloppement inférieure de la saisie utilisateur */
+.chat-input-wrapper {
+    padding: 12px 16px;
+    border-top: 1px solid rgba(var(--glass-liseret), 0.1);
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+}
+
+/* Conteneur physique étanche de saisie (Empêche l'affichage de déborder) */
+.input-container {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(var(--glass-liseret), 0.2);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    padding-right: 6px;
+    max-height: 90px; /* Seuil physique de blocage d'expansion pour mobile/TV */
+    overflow-y: auto;  /* Déclenchement de la scrollbar interne si le pavé de texte excède la hauteur maximale */
+}
+
+#chat-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 10px 12px;
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    resize: none; /* Désactive la poignée native moche des navigateurs web */
+}
+
+/* Boutons d'actions rapides intégrés (Nettoyage de zone) */
+.input-action-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    font-size: 12px;
+}
+.input-action-btn:hover { opacity: 1; }
+
+.send-action-btn {
+    background: rgba(var(--glass-liseret), 0.2);
+    border: 1px solid rgba(var(--glass-liseret), 0.3);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.send-action-btn:hover { background: rgba(var(--glass-liseret), 0.4); }
+
+/* =========================================================================
+   PHYSIQUE DES POIGNÉES DE REDIMENSIONNEMENT INVERSÉES ET CONTEXTUELLES
+   ========================================================================= */
+.resize-handle {
+    position: absolute;
+    z-index: 999;
+}
+/* Bords latéraux */
+.resize-handle.left-handle  { top:0; left:0;   width:6px; height:100%; cursor:w-resize; }
+.resize-handle.right-handle { top:0; right:0;  width:6px; height:100%; cursor:e-resize; }
+.resize-handle.top-handle   { top:0; left:0;   width:100%; height:6px; cursor:n-resize; }
+.resize-handle.bot-handle   { bottom:0; left:0; width:100%; height:6px; cursor:s-resize; }
+/* Coins diagonaux */
+.resize-handle.tl { top:0;    left:0;   width:14px; height:14px; cursor:nw-resize; }
+.resize-handle.tr { top:0;    right:0;  width:14px; height:14px; cursor:ne-resize; }
+.resize-handle.bl { bottom:0; left:0;   width:14px; height:14px; cursor:sw-resize; }
+.resize-handle.br { bottom:0; right:0;  width:14px; height:14px; cursor:se-resize; }
+.resize-handle.tl::after, .resize-handle.tr::after,
+.resize-handle.bl::after, .resize-handle.br::after {
+    content: '';
+    position: absolute;
+    width:6px; height:6px; border-radius:50%;
+    background: rgba(var(--border-r),var(--border-g),var(--border-b),0.45);
+    top:50%; left:50%; transform:translate(-50%,-50%);
+}
+
+/* ── Panneau config — fond opaque forcé pour lisibilité sur tout fond d'écran ── */
+#lisa-master-panel {
+    top: 80px;
+    left: calc(50% - 190px);
+    width: 380px;
+    max-height: 80vh;
+    z-index: 2000;
+    /* Override du glass transparent — le panneau de config DOIT être lisible */
+    background: rgba(5, 8, 20, 0.92) !important;
+    backdrop-filter: blur(24px) brightness(0.75) !important;
+    -webkit-backdrop-filter: blur(24px) brightness(0.75) !important;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08) inset !important;
+}
+.modal-hidden {
+    transform: translateY(20px) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+.config-group {
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+}
+.config-group label { color: rgba(255,255,255,0.6); font-family: 'JetBrains Mono', monospace; }
+.config-group input[type="range"] { width: 100%; accent-color: var(--orb-blue); }
+
+.widget-manager-list { display: flex; flex-direction: column; gap: 8px; margin-top: 5px; }
+.widget-manager-list button {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(var(--glass-liseret), 0.2);
+    color: #fff;
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    text-align: left;
+    transition: background 0.2s;
+}
+.widget-manager-list button:hover { background: rgba(var(--glass-liseret), 0.2); }
+
+/* Interface utilitaire inférieure d'évaluation et de débug matériel */
+#simulation-bar {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: flex;
+    gap: 12px;
+}
+#simulation-bar button {
+    background: #0d1527;
+    border: 1px solid #1e2d4a;
+    color: #729cd2;
+    padding: 10px 16px;
+    border-radius: 30px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+#simulation-bar button:hover { background: #15223e; color: #fff; }
+
+/* Animation de transition fluide simulant l'aspiration géométrique vers l'Orbe (Mode Sommeil) */
+.minimized-state {
+    transform: scale(0.01) translate(400px, -400px) !important;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════
+   PANNEAU DE CONTRÔLE UNIFIÉ — MASTER PANEL
+   ═══════════════════════════════════════════════════════ */
+.master-panel-body {
+    overflow-y: auto;
+    max-height: 75vh;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 12px 16px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--glass-liseret),0.25) transparent;
+}
+.master-panel-body::-webkit-scrollbar { width: 3px; }
+.master-panel-body::-webkit-scrollbar-thumb { background: rgba(var(--glass-liseret),0.25); border-radius: 2px; }
+
+.mp-section {
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(var(--glass-liseret),0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.mp-section:last-child { border-bottom: none; }
+
+.mp-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: rgba(200,216,240,0.35);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.mp-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: rgba(200,216,240,0.6);
+}
+.mp-row label { font-size: 10px; letter-spacing: 0.06em; }
+.mp-row input[type="range"] { accent-color: var(--state-color); width: 100%; }
+.mp-row input[type="color"] {
+    width: 28px; height: 20px;
+    border: 1px solid rgba(var(--glass-liseret),0.3);
+    border-radius: 4px; background: none;
+    cursor: pointer; padding: 1px;
+}
+
+/* Liste des widgets actifs */
+.mp-widget-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.mp-widget-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(var(--glass-liseret),0.1);
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: rgba(200,216,240,0.65);
+}
+.mp-widget-row span { flex: 1; }
+.mp-widget-btn {
+    background: transparent;
+    border: 1px solid rgba(var(--glass-liseret),0.2);
+    color: rgba(200,216,240,0.4);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 9px;
+    padding: 3px 7px;
+    transition: all 0.2s;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+}
+.mp-widget-btn:hover { background: rgba(var(--glass-liseret),0.15); color: #fff; }
+.mp-widget-btn.remove { border-color: rgba(200,50,50,0.25); }
+.mp-widget-btn.remove:hover { background: rgba(200,50,50,0.2); color: #ff8080; }
+
+/* Grille d'ajout de widgets */
+.mp-add-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+}
+.mp-add-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(var(--glass-liseret),0.15);
+    color: rgba(200,216,240,0.6);
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 8px 6px;
+    text-align: left;
+    transition: all 0.2s;
+}
+.mp-add-btn:hover {
+    background: rgba(var(--glass-liseret),0.15);
+    color: #fff;
+    border-color: rgba(var(--glass-liseret),0.35);
+}
+
+/* Bouton sauvegarde principale */
+.mp-save-btn {
+    background: rgba(var(--border-r),var(--border-g),var(--border-b),0.15);
+    border: 1px solid rgba(var(--border-r),var(--border-g),var(--border-b),0.4);
+    color: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 9px 14px;
+    width: 100%;
+    transition: background 0.2s;
+}
+.mp-save-btn:hover { background: rgba(var(--border-r),var(--border-g),var(--border-b),0.3); }
+
+/* Fix window-body overflow */
+.window-body {
+    overflow: hidden;
+}
+
+/* ── Lisibilité garantie sur tous les fonds — textes avec ombre portée ── */
+.spatial-window .window-title,
+.spatial-window .window-body,
+.spatial-window .msg,
+.spatial-window .wx-temp,
+.spatial-window .wx-condition,
+.spatial-window .wx-city-name,
+.spatial-window .wx-detail,
+.spatial-window .wx-day,
+.spatial-window .yt-card-title,
+.spatial-window .yt-card-channel,
+.spatial-window .yt-home-line,
+.spatial-window .wcfg-row label,
+.spatial-window .mp-label,
+.spatial-window .mp-row label {
+    text-shadow: 0 1px 5px rgba(0,0,0,0.95), 0 0 10px rgba(0,0,0,0.6);
+}
+
+/* Fond minimal sous les zones de texte pour garantir le contraste */
+.chat-history-zone .msg {
+    background: rgba(0, 0, 0, 0.35) !important; /* Toujours un minimum de fond sur les bulles */
+}
+.chat-history-zone .msg.lisa {
+    background: rgba(0, 0, 0, 0.4) !important;
+}
+.chat-history-zone .msg.user {
+    background: rgba(var(--border-r), var(--border-g), var(--border-b), 0.25) !important;
+}
+
+/* ── Badge d'état court dans la barre de statut ── */
+.status-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    color: var(--state-color);
+    background: rgba(var(--border-r),var(--border-g),var(--border-b),0.12);
+    border: 1px solid rgba(var(--border-r),var(--border-g),var(--border-b),0.25);
+    border-radius: 3px;
+    padding: 2px 6px;
+    text-transform: uppercase;
+    transition: color 0.5s, background 0.5s;
+    flex-shrink: 0;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+
+/* ── Ombres portées — profondeur et lisibilité ──────────────────── */
+.spatial-window {
+    filter: drop-shadow(0 8px 24px rgba(0,0,0,0.6));
+}
+#lisa-orb-hud {
+    filter: drop-shadow(0 0 20px rgba(0,0,0,0.5));
+}
+
+/* Tous les textes ont une ombre portée pour lisibilité sur tous fonds */
+.spatial-window,
+.spatial-window * {
+    text-shadow: 0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.5);
+}
+/* Exclure les éléments qui n'ont pas besoin de text-shadow */
+.spatial-window input,
+.spatial-window textarea,
+.spatial-window iframe,
+.spatial-window canvas {
+    text-shadow: none;
+}
