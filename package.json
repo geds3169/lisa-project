@@ -1,0 +1,53 @@
+{
+  "name": "lisa",
+  "productName": "L.I.S.A.",
+  "version": "2.1.0",
+  "description": "Local Intelligent Spatial Assistant",
+  "author": "Guilhem SCHLOSSER / Geds3169",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:linux": "electron-builder --linux",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:all": "electron-builder --linux --win"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.7"
+  },
+  "devDependencies": {
+    "electron": "^42.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.geds3169.lisa",
+    "productName": "L.I.S.A.",
+    "copyright": "Copyright © 2026 Guilhem SCHLOSSER",
+    "files": [
+      "main.js",
+      "preload.js",
+      "frontend/**/*",
+      "!frontend/MediaHub/**",
+      "!frontend/linktalk/**",
+      "!**/node_modules/.cache/**"
+    ],
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Utility",
+      "icon": "frontend/assets/icon.png"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "frontend/assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "frontend/assets/icon.icns"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "geds3169",
+      "repo": "lisa-releases"
+    }
+  }
+}
